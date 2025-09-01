@@ -2,7 +2,6 @@
 import { cn } from "@/lib/utils";
 import React, { useEffect, useState } from "react";
 import { BentoGrid, BentoGridItem } from "./ui/bento-grid";
-import { number } from "motion";
 
 export function Calculator() {
   const [numbers, setNumbers] = useState<number[]>([]);
@@ -11,6 +10,7 @@ export function Calculator() {
   const [validEquation, setValidEquation] = useState(true);
   const [userInput, setUserInput] = useState("");
   const [clickedValues, setClickedValues] = useState<string[]>([]);
+  const [usedIndices, setUsedIndices] = useState<number[]>([]);
 
   const fetchNumbers = () => {
     fetch("/random-numbers")
@@ -20,39 +20,49 @@ export function Calculator() {
         setAnswer(data.answer ?? "");
       })
       .catch((err) => console.error(err));
+
     setUserInput("");
     setClickedValues([]);
+    setUsedIndices([]);
     setValidEquation(true);
     setResult(undefined);
   };
 
-  const printList = () => {
-    console.log(clickedValues);
-  };
-
   const isEnterEnabled = () => {
-    // Count how many numbers in `numbers` are clicked
     const clickedNumbersCount = numbers.filter((num) =>
       clickedValues.includes(num.toString())
     ).length;
 
-    return clickedNumbersCount === numbers.length; // enable only if all numbers clicked
+    return clickedNumbersCount === numbers.length;
   };
 
-  const handleItemClick = async (value: string, isClicked: boolean) => {
+  const handleItemClick = async (
+    value: string,
+    isClicked: boolean,
+    index: number
+  ) => {
     if (value === "Clear") {
       setUserInput("");
       setClickedValues([]);
+      setUsedIndices([]);
       setResult(undefined);
       setValidEquation(true);
     } else if (value === "Del") {
       if (clickedValues.length > 0) {
-        const lengthOfLastClicked =
-          -1 * clickedValues[clickedValues.length - 1].toString().length;
+        const lastClickedValue = clickedValues[clickedValues.length - 1];
+        const lengthOfLastClicked = -1 * lastClickedValue.toString().length;
+
         setUserInput((prev) =>
           prev.trimEnd().slice(0, lengthOfLastClicked).trimEnd()
         );
+
         setClickedValues((prev) => prev.slice(0, -1));
+        const lastClickedIsNumber =
+          clickedValues.length > 0 &&
+          !isNaN(Number(clickedValues[clickedValues.length - 1]));
+        if (lastClickedIsNumber) {
+          setUsedIndices((prev) => prev.slice(0, -1));
+        }
       }
       setResult(undefined);
       setValidEquation(true);
@@ -60,6 +70,9 @@ export function Calculator() {
       if (value === ")" || clickedValues[clickedValues.length - 1] === "(") {
         !isClicked && setClickedValues((prev) => [...prev, value]);
         !isClicked && setUserInput((prev) => prev + value);
+        if (!isClicked && index < 5) {
+          setUsedIndices((prev) => [...prev, index]);
+        }
         if (value === "√") {
           setClickedValues((prev) => [...prev, "("]);
           setUserInput((prev) => prev + "(");
@@ -67,6 +80,9 @@ export function Calculator() {
       } else {
         !isClicked && setClickedValues((prev) => [...prev, value]);
         !isClicked && setUserInput((prev) => prev + " " + value);
+        if (!isClicked && index < 5) {
+          setUsedIndices((prev) => [...prev, index]);
+        }
         if (value === "√") {
           setClickedValues((prev) => [...prev, "("]);
           setUserInput((prev) => prev + "(");
@@ -81,14 +97,13 @@ export function Calculator() {
             body: JSON.stringify({ answer: clickedValues }),
           });
           const data = await response.json();
+          console.log(data);
           if (data["validString"]) {
-            console.log(data["answer"]);
-            setResult(data["answer"]);
             setResult(data["answer"]);
             setValidEquation(true);
           } else {
-            console.log("invalid input");
             setValidEquation(false);
+            setResult(undefined);
           }
         } catch (err) {
           console.error("Error submitting answer:", err);
@@ -101,14 +116,12 @@ export function Calculator() {
     fetchNumbers();
   }, []);
 
-  // Map the original items and replace the first 5 titles with numbers
   const itemsWithNumbers = items.map((item, idx) => {
     return { ...item, title: numbers[idx] ?? item.title };
   });
 
   return (
     <div className="max-w-4xl mx-auto flex-col">
-      {/* Display answer above the grid */}
       <p
         className={cn(
           "mb-2 text-6xl  text-center",
@@ -130,7 +143,7 @@ export function Calculator() {
         <input
           type="text"
           readOnly
-          value={userInput} // controlled value
+          value={userInput}
           onChange={(e) => setUserInput(e.target.value)}
           className="border px-3 py-2 rounded-lg w-[75%] mb-4 "
         />
@@ -155,8 +168,7 @@ export function Calculator() {
       <BentoGrid className="max-w-4xl mx-auto">
         {itemsWithNumbers.map((item, i) => {
           const value = item.title;
-          const isClicked =
-            clickedValues.includes(value.toString()) && numbers.includes(value);
+          const isClicked = usedIndices.includes(i);
 
           return (
             <BentoGridItem
@@ -171,7 +183,7 @@ export function Calculator() {
                   ? "bg-gray-300 opacity-50 hover:bg-gray-300 active:bg-gray-300"
                   : ""
               )}
-              onClick={() => handleItemClick(value.toString(), isClicked)}
+              onClick={() => handleItemClick(value.toString(), isClicked, i)}
             />
           );
         })}
@@ -191,7 +203,6 @@ export function Calculator() {
   );
 }
 
-// Original items array, unchanged
 const items = [
   { title: "", className: "col-span-1 h-[3rem]" },
   { title: "", className: "col-span-1 h-[3rem]" },
@@ -204,8 +215,6 @@ const items = [
   { title: "-", className: "md:col-span-1" },
   { title: "/", className: "col-span-1" },
   { title: "×", className: "col-span-1" },
-  // { title: "!", className: "col-span-1" },
-  // { title: "%", className: "col-span-1" },
   { title: "√", className: "col-span-1" },
   { title: "^", className: "col-span-1" },
   { title: "Del", className: "col-span-2" },
